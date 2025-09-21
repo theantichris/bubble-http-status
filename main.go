@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -8,8 +9,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 )
-
-const url = "https://charm.sh/"
 
 type statusMsg int
 
@@ -21,6 +20,7 @@ func (err errMsg) Error() string { return err.err.Error() }
 
 // model stores the application state.
 type model struct {
+	url    string
 	status int
 	err    error
 }
@@ -28,14 +28,8 @@ type model struct {
 // Init returns a tea.Cmd that is run at application start up.
 func (model model) Init() tea.Cmd {
 	// The Bubble Tea runtime will call the function when the time is right.
-	return checkServer
-}
 
-func main() {
-	if _, err := tea.NewProgram(model{}).Run(); err != nil {
-		fmt.Printf("Uh oh, there was an error: %v\n", err)
-		os.Exit(1)
-	}
+	return model.checkServer
 }
 
 // Update updates the application state.
@@ -78,7 +72,7 @@ func (model model) View() string {
 	}
 
 	// Tell the user we're doing something.
-	s := fmt.Sprintf("Checking %s ...", url)
+	s := fmt.Sprintf("Checking %s ...", model.url)
 
 	// When the server responds with a status, add it to the current line.
 	if model.status > 0 {
@@ -89,13 +83,41 @@ func (model model) View() string {
 	return "\n" + s + "\n\n"
 }
 
-// checkServer sends a GET request to a url and returns the http.StatusCode as a statusMsg.
-func checkServer() tea.Msg {
+func main() {
+	url := flag.String("url", "https://charm.sh/", "the URL to check the status of")
+	flag.Parse()
+
+	if _, err := tea.NewProgram(model{url: *url}).Run(); err != nil {
+		fmt.Printf("Uh oh, there was an error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// checkServer sends a GET request to a URL and returns the http.StatusCode as
+// a statusMsg.
+func (model model) checkServer() tea.Msg {
 	httpClient := &http.Client{Timeout: time.Duration(10) * time.Second}
-	response, err := httpClient.Get(url)
+	response, err := httpClient.Get(model.url)
 	if err != nil {
 		return errMsg{err}
 	}
 
 	return statusMsg(response.StatusCode)
+}
+
+// CheckServerCLI sends a GET request to a URL provided in the CLI and returns
+// the http.StatusCode as a statusMsg.
+//
+// tea.Cmd are type Cmd func() Msg so cannot take arguments. If you need
+// arguments you can make a function that returns a tea.Cmd.
+func CheckServerCLI(url string) tea.Cmd {
+	return func() tea.Msg {
+		httpClient := &http.Client{Timeout: time.Duration(10) * time.Second}
+		response, err := httpClient.Get(url)
+		if err != nil {
+			return errMsg{err}
+		}
+
+		return statusMsg(response.StatusCode)
+	}
 }
